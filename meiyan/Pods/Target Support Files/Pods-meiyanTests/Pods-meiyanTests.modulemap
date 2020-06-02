@@ -1,0 +1,6 @@
+framework module Pods_meiyanTests {
+  umbrella header "Pods-meiyanTests-umbrella.h"
+
+  export *
+  module * { export * }
+}

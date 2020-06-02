@@ -1,0 +1,5 @@
+${PODS_ROOT}/Target Support Files/Pods-meiyan/Pods-meiyan-frameworks.sh
+${BUILT_PRODUCTS_DIR}/GPUImage/GPUImage.framework
+${BUILT_PRODUCTS_DIR}/NVActivityIndicatorView/NVActivityIndicatorView.framework
+${BUILT_PRODUCTS_DIR}/R.swift.Library/Rswift.framework
+${BUILT_PRODUCTS_DIR}/SnapKit/SnapKit.framework
