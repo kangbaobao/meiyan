@@ -14,6 +14,10 @@ struct VIDEOPARM {
     //是否停止解码
     bool zhongduan;
 };
+//RGB
 typedef void(*RGBSWSCALLBACK)(int, int, uint8_t *, int);
+//RGBA
+typedef void(*RGBASWSCALLBACK)(int, int, uint8_t *, int);
+
 typedef void(*VIDEOBLOCK)(void*);
 #endif /* mpegHeader_h */

@@ -7,12 +7,13 @@
 //
 
 #include <metal_stdlib>
+#include "MYMetalHeader.h"
 using namespace metal;
 
-struct Vertex{
-    float4 position [[position]];
-    float4 color;
-};
+//struct Vertex{
+//    float4 position [[position]];
+//    float4 color;
+//};
 
 vertex Vertex vertex_func(constant Vertex *vertices [[buffer(0)]],uint vid [[vertex_id]]){
     return vertices[vid];

@@ -27,6 +27,7 @@ extern "C"{
     #include <libavfilter/buffersink.h>
     #include <libswscale/swscale.h>
     #include <libswresample/swresample.h>
+    #include <libavdevice/avdevice.h>
 }
 #include "mpegHeader.h"
 
@@ -39,6 +40,11 @@ int puctureswsScale(std::string inputStr,RGBSWSCALLBACK block);
 
 //连续解码video
 int videoswsScaleplay(std::string inputStr,RGBSWSCALLBACK block,VIDEOBLOCK videoBlock);
+//调用摄像头解码视频
+int cermaswsScaleplay(RGBSWSCALLBACK block,VIDEOBLOCK videoBlock);
+//调用摄像头解码视频 RGBA
+int cermaswsRGBAScaleplay(RGBSWSCALLBACK block,VIDEOBLOCK videoBlock);
+int videoswsHWRGBAScaleplay(std::string inputUrl,RGBSWSCALLBACK block,VIDEOBLOCK videoBlock);
 //转码
 int toMP4Main(std::string inputStr,std::string outpuStr);
 //打印头信息

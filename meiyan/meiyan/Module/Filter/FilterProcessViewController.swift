@@ -31,7 +31,6 @@ class FilterProcessViewController: MYBaseViewController {
             make.left.equalTo(0)
             make.right.equalTo(0)
             make.bottom.equalTo(self.view.snp.bottom).offset(-(MYSeetings.SafeBottomHeight));
-            
         }
     }
     // 创建子视图

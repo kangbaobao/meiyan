@@ -49,10 +49,55 @@ int OpenInput(string inputUrl){
     }
     return ret;
 }
+//打开摄像头
+static int OpenCermaInput(){
+    avdevice_register_all();
+    inputContext = avformat_alloc_context();
+    lastReadpackTime = av_gettime();
+    inputContext->interrupt_callback.callback = ineterrupt_cb;
+    AVDictionary* options = NULL;
+//    av_dict_set(&options, "framerate", "30", 0);
+    av_dict_set(&options, "framerate", "60", 0);
+    // 640x480 不支持帧率30
+    av_dict_set(&options, "video_size", "640x480", 0);//"1280x720"
+    //传1 是前置摄像头，默认是0 后置摄像头
+    av_dict_set(&options, "video_device_index", "1", 0);
+    av_dict_set(&options, "capture_cursor", "true", 0);
+
+    //设置视频格式，直接设置成RGB的格式，解码时就不用转码了
+    /*
+     不支持rgb24格式
+     [avfoundation @ 0x10b817000] Selected pixel format (rgb24) is not supported by the input device.
+     [avfoundation @ 0x10b817000] Supported pixel formats:
+     [avfoundation @ 0x10b817000]   nv12
+     [avfoundation @ 0x10b817000]   bgr0
+     [avfoundation @ 0x10b817000] Overriding selected pixel format to use nv12 instead.
+     **/
+   // av_dict_set_int(&options, "pixel_format", AV_PIX_FMT_RGB24, AV_PIX_FMT_RGB24);
+    AVInputFormat *iformat = av_find_input_format("avfoundation");
+    int ret = avformat_open_input(&inputContext,"0",iformat,&options);//
+    if(ret!=0){ //
+        printf("Couldn't open input stream.\n");
+        char errbuf[1024] = {0};
+        av_strerror(ret, errbuf, 1024);
+        std::cout << "出错原因 ：" <<errbuf<<endl;
+
+        return -1;
+    }
+     ret = avformat_find_stream_info(inputContext, nullptr);
+    if (ret < 0 ){
+        std::cout << "Find input file stream inform failed\n"<<endl;
+        return ret;
+    }else{
+        std::cout << "打开摄像头成功haha \n"<<endl;
+    }
+    return ret;
+}
 shared_ptr<AVPacket> ReadPacketFromSource(){
     shared_ptr<AVPacket> packet(static_cast<AVPacket *>(av_malloc(sizeof(AVPacket))),
                                 [&](AVPacket *p){
-//        av_packet_free(&p);
+        //⚠️⚠️⚠️⚠️⚠️必须写上，不让内存泄露会很严重的
+        av_packet_free(&p);
 //        av_free(&p);
     });
     av_init_packet(packet.get());
@@ -288,7 +333,6 @@ int puctureMain(string inputStr,string outpuStr)
                     }
                 }
             }
-                        
         }
      }
      cout <<"Get Picture End "<<endl;
@@ -431,8 +475,6 @@ int videoswsScaleplay(string inputStr,RGBSWSCALLBACK block,VIDEOBLOCK videoBlock
     InitDecodeContext(inputContext->streams[videoIndex]);
     AVFrame *videoFrame = av_frame_alloc();
      SwsContext *sws_cxt = sws_getContext(codecContext->width,  codecContext->height, codecContext->pix_fmt, codecContext->width, codecContext->height, AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr, nullptr);
-    //inputContext->streams[videoIndex]->avg_frame_rate;
-     //inputContext->duration
     AVRational frameRate = inputContext->streams[videoIndex]->avg_frame_rate;
     float fps = 0.04;
     if (frameRate.num > 0 && frameRate.den > 0){
@@ -453,7 +495,6 @@ int videoswsScaleplay(string inputStr,RGBSWSCALLBACK block,VIDEOBLOCK videoBlock
           std::cout<<"sws_cxt failed"<<endl;
           av_frame_free(&RGBFrame);
           av_free(RGBFrame);
-         // continue;
       }
      while(true){
         auto packet = ReadPacketFromSource();
@@ -463,7 +504,6 @@ int videoswsScaleplay(string inputStr,RGBSWSCALLBACK block,VIDEOBLOCK videoBlock
          }
         if(packet && packet->stream_index == videoIndex){
             if(Decode(inputContext->streams[videoIndex],packet.get(),videoFrame)) {
-
                 sws_scale(sws_cxt, videoFrame->data, videoFrame->linesize, 0, videoFrame->height, RGBFrame->data, RGBFrame->linesize);
                 //延迟
                 av_usleep(fps * 1000*1000);
@@ -480,8 +520,6 @@ int videoswsScaleplay(string inputStr,RGBSWSCALLBACK block,VIDEOBLOCK videoBlock
                         break;
                     }
                 }
-
-
             }
         }
      }
@@ -495,6 +533,305 @@ int videoswsScaleplay(string inputStr,RGBSWSCALLBACK block,VIDEOBLOCK videoBlock
     CloseOutput();
     return 0;
 }
+//调用摄像头解码视频
+int cermaswsScaleplay(RGBSWSCALLBACK block,VIDEOBLOCK videoBlock)
+{
+    Init();
+    int ret = OpenCermaInput();
+    if(ret <0) {
+        CloseInput();
+        return  -1;
+    }
+    int videoIndex = 0;
+    for (int i = 0;i <inputContext->nb_streams;i++){
+        if (inputContext->streams[i]->codecpar->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO){
+            videoIndex = i;
+            break;
+        }
+    }
+    AVCodecContext *encodeContext = nullptr;
+    InitDecodeContext(inputContext->streams[videoIndex]);
+    AVFrame *videoFrame = av_frame_alloc();
+     SwsContext *sws_cxt = sws_getContext(codecContext->width,  codecContext->height, codecContext->pix_fmt, codecContext->width, codecContext->height, AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr, nullptr);
+    AVRational frameRate = inputContext->streams[videoIndex]->avg_frame_rate;
+    float fps = 0.04;
+    if (frameRate.num > 0 && frameRate.den > 0){
+        fps = 1.0/av_q2d(frameRate);
+    }
+    int64_t duration = inputContext->streams[videoIndex]->duration;
+    
+    AVFrame *RGBFrame = av_frame_alloc();
+      //sws_scale转码 写在while循环里会造成严重的内容泄漏问题，⚠️⚠️⚠️
+     ret =  av_image_alloc(RGBFrame->data, RGBFrame->linesize, codecContext->width, codecContext->height, AV_PIX_FMT_RGB24, 1);
+      if (!sws_cxt&& ret < 0){
+          std::cout<<"sws_cxt failed"<<endl;
+          av_frame_free(&RGBFrame);
+          av_free(RGBFrame);
+      }
+     while(true){
+        auto packet = ReadPacketFromSource();
+         if (!packet){
+             //解码失败停止解码 并且 快结束时
+             break;
+         }
+        if(packet && packet->stream_index == videoIndex){
+            if(Decode(inputContext->streams[videoIndex],packet.get(),videoFrame)) {
+                sws_scale(sws_cxt, videoFrame->data, videoFrame->linesize, 0, videoFrame->height, RGBFrame->data, RGBFrame->linesize);
+                //延迟
+                av_usleep(fps * 1000*1000);
+                block(codecContext->width,codecContext->height,RGBFrame->data[0],RGBFrame->linesize[0]);
+                // 传递进度 并且返回bool 是否中断视频播放
+                if (videoBlock != nullptr) {
+                    float pro = (float)videoFrame->pts/duration;
+                    struct VIDEOPARM vs;
+                    vs.pro = pro;
+                    struct VIDEOPARM *v = &vs;
+                    videoBlock((void *)v);
+                    if (v->zhongduan == true){
+                        break;
+                    }
+                }
+            }
+        }
+     }
+     cout <<"Get Video End "<<endl;
+    av_frame_free(&RGBFrame);
+    av_free(RGBFrame);
+    sws_freeContext(sws_cxt);
+     av_frame_free(&videoFrame);
+     avcodec_close(encodeContext);
+    CloseInput();
+    CloseOutput();
+    return 0;
+}
+//
+//调用摄像头解码视频 RGBA
+int cermaswsRGBAScaleplay(RGBSWSCALLBACK block,VIDEOBLOCK videoBlock){
+    Init();
+    int ret = OpenCermaInput();
+    if(ret <0) {
+        CloseInput();
+        return  -1;
+    }
+    int videoIndex = 0;
+    for (int i = 0;i <inputContext->nb_streams;i++){
+        if (inputContext->streams[i]->codecpar->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO){
+            videoIndex = i;
+            break;
+        }
+    }
+    AVCodecContext *encodeContext = nullptr;
+    InitDecodeContext(inputContext->streams[videoIndex]);
+    AVFrame *videoFrame = av_frame_alloc();
+     SwsContext *sws_cxt = sws_getContext(codecContext->width,  codecContext->height, codecContext->pix_fmt, codecContext->width, codecContext->height, AV_PIX_FMT_RGBA, SWS_BILINEAR, nullptr, nullptr, nullptr);
+    AVRational frameRate = inputContext->streams[videoIndex]->avg_frame_rate;
+    float fps = 0.04;
+    if (frameRate.num > 0 && frameRate.den > 0){
+        fps = 1.0/av_q2d(frameRate);
+    }
+    int64_t duration = inputContext->streams[videoIndex]->duration;
+    AVFrame *RGBAFrame = av_frame_alloc();
+      //sws_scale转码 写在while循环里会造成严重的内容泄漏问题，⚠️⚠️⚠️
+     ret =  av_image_alloc(RGBAFrame->data, RGBAFrame->linesize, codecContext->width, codecContext->height, AV_PIX_FMT_RGBA, 1);
+      if (!sws_cxt&& ret < 0){
+          std::cout<<"sws_cxt failed"<<endl;
+          av_frame_free(&RGBAFrame);
+          av_free(RGBAFrame);
+      }
+     while(true){
+        auto packet = ReadPacketFromSource();
+         if (!packet){
+             //解码失败停止解码 并且 快结束时
+             break;
+         }
+        if(packet && packet->stream_index == videoIndex){
+            if(Decode(inputContext->streams[videoIndex],packet.get(),videoFrame)) {
+                sws_scale(sws_cxt, videoFrame->data, videoFrame->linesize, 0, videoFrame->height, RGBAFrame->data, RGBAFrame->linesize);
+                //延迟
+                av_usleep(fps * 1000*1000);
+                block(codecContext->width,codecContext->height,RGBAFrame->data[0],RGBAFrame->linesize[0]);
+                // 传递进度 并且返回bool 是否中断视频播放
+                if (videoBlock != nullptr) {
+                    float pro = (float)videoFrame->pts/duration;
+                    struct VIDEOPARM vs;
+                    vs.pro = pro;
+                    struct VIDEOPARM *v = &vs;
+                    videoBlock((void *)v);
+                    if (v->zhongduan == true){
+                        break;
+                    }
+                }
+            }
+        }
+     }
+     cout <<"Get Video End "<<endl;
+    av_frame_free(&RGBAFrame);
+    av_free(RGBAFrame);
+    sws_freeContext(sws_cxt);
+     av_frame_free(&videoFrame);
+     avcodec_close(encodeContext);
+    CloseInput();
+    CloseOutput();
+    return 0;
+}
+
+//-----------------------------------硬件解码相关函数---------------------------------------------------
+static enum AVPixelFormat hw_pix_fmt;
+static enum AVHWDeviceType type;
+static AVBufferRef *hw_device_ctx = NULL;
+
+//打开摄像头
+static int OpenVideoHWInput(string inputUrl){
+    avdevice_register_all();
+    inputContext = avformat_alloc_context();
+    lastReadpackTime = av_gettime();
+    inputContext->interrupt_callback.callback = ineterrupt_cb;
+    //MacOS和iOS可以固定写videotoolbox
+    // 指定解码器名称, 这里使用苹果VideoToolbox中的硬件解码器 //"videotoolbox"
+       const char *codecName = av_hwdevice_get_type_name(AV_HWDEVICE_TYPE_VIDEOTOOLBOX);
+    type = av_hwdevice_find_type_by_name(codecName);
+    if(type == AV_HWDEVICE_TYPE_NONE){
+        std::cout<< "该设备不支持videotoolbox硬件解码"<<endl;
+        //打印支持的硬件解码器
+        while ((type = av_hwdevice_iterate_types(type)) != AV_HWDEVICE_TYPE_NONE) {
+            std::cout<<"支持的硬件解码器："<<av_hwdevice_get_type_name(type)<<endl;
+        }
+        return -1;
+    }
+    int ret = avformat_open_input(&inputContext,inputUrl.c_str(),nullptr,nullptr);
+    if(ret!=0){ //
+        printf("Couldn't open input stream.\n");
+        char errbuf[1024] = {0};
+        av_strerror(ret, errbuf, 1024);
+        std::cout << "出错原因 ：" <<errbuf<<endl;
+
+        return -1;
+    }
+     ret = avformat_find_stream_info(inputContext, nullptr);
+    if (ret < 0 ){
+        std::cout << "Find input file stream inform failed\n"<<endl;
+        return ret;
+    }else{
+        std::cout << "打开摄像头成功haha \n"<<endl;
+    }
+//    /* find the video stream information */
+//    ret =
+    return ret;
+}
+static int hw_decoder_init(AVCodecContext *ctx,const enum AVHWDeviceType type){
+    int err = 0;
+    if ((err= av_hwdevice_ctx_create(&hw_device_ctx, type, nullptr, nullptr, 0)) < 0 ){
+        std::cout<< "Failed to create specified HW device."<<endl;
+        return err;
+    }
+    ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
+    return err;
+}
+static enum AVPixelFormat get_hw_format(AVCodecContext *ctx,const enum AVPixelFormat *pix_fmts){
+    const enum AVPixelFormat *p;
+    for(p = pix_fmts;*p != -1;p++){
+        if (*p == hw_pix_fmt){
+            return *p;
+        }
+    }
+    std::cout<<"Failed to get HW surface format."<<endl;
+    return AV_PIX_FMT_NONE;
+}
+int InitHWDecodeContext(AVStream *inputStream){
+    auto codecId = inputStream->codecpar->codec_id;
+    auto codec = avcodec_find_decoder(codecId);
+    if (!codec){
+        return -1;
+    }
+    for(int i = 0;;i++){
+        const AVCodecHWConfig *config = avcodec_get_hw_config(codec, i);
+        if (!config){
+            std::cout<< codec->name << " 不支持硬件解码 "<<av_hwdevice_get_type_name(type);
+            return -1;
+        }
+        if(config->methods &AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX && config->device_type == type){
+            hw_pix_fmt = config->pix_fmt;
+            break;
+        }
+    }
+    codecContext = avcodec_alloc_context3(codec);
+    avcodec_parameters_to_context(codecContext, inputStream->codecpar);
+    codecContext->get_format = get_hw_format;
+    if (hw_decoder_init(codecContext, type)){
+        return -1;
+    }
+   int ret = avcodec_open2(codecContext, codec, nullptr);
+    if (ret < 0) {
+        std::cout << "InitDecodeContext : " <<ret << endl;
+    }
+    return ret;
+}
+int videoswsHWRGBAScaleplay(string inputUrl,RGBSWSCALLBACK block,VIDEOBLOCK videoBlock){
+    Init();
+    int ret = OpenVideoHWInput(inputUrl);
+    if(ret <0) {
+        CloseInput();
+        return  -1;
+    }
+    int videoIndex = 0;
+    for (int i = 0;i <inputContext->nb_streams;i++){
+        if (inputContext->streams[i]->codecpar->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO){
+            videoIndex = i;
+            break;
+        }
+    }
+    AVCodecContext *encodeContext = nullptr;
+    InitHWDecodeContext(inputContext->streams[videoIndex]);
+    AVFrame *videoFrame = av_frame_alloc();
+    // 硬件解码  H.264 -> CMSampleBuffer -> CVPixelBuffer
+    AVRational frameRate = inputContext->streams[videoIndex]->avg_frame_rate;
+    float fps = 0.04;
+    if (frameRate.num > 0 && frameRate.den > 0){
+        fps = 1.0/av_q2d(frameRate);
+    }
+    int64_t duration = inputContext->streams[videoIndex]->duration;
+      //sws_scale转码 写在while循环里会造成严重的内容泄漏问题，⚠️⚠️⚠️
+     while(true){
+        auto packet = ReadPacketFromSource();
+         if (!packet){
+             //解码失败停止解码 并且 快结束时
+             break;
+         }
+        if(packet && packet->stream_index == videoIndex){
+            if(Decode(inputContext->streams[videoIndex],packet.get(),videoFrame)) {
+                //格式：videotoolbox_vld
+                   // std::cout<<"格式：" << av_get_pix_fmt_name((AVPixelFormat)videoFrame->format)<<endl;
+                //延迟
+                av_usleep(fps * 1000*1000);
+                //硬件解码时 data[3]有数据 0，1，2未NULL
+                std::cout<<"codecContext->width : "<<codecContext->width <<endl;
+                std::cout<<"codecContext->height : "<<codecContext->height <<endl;
+                block(codecContext->width,codecContext->height,videoFrame->data[3],0);
+                
+                // 传递进度 并且返回bool 是否中断视频播放
+                if (videoBlock != nullptr) {
+                    float pro = (float)videoFrame->pts/duration;
+                    struct VIDEOPARM vs;
+                    vs.pro = pro;
+                    struct VIDEOPARM *v = &vs;
+                    videoBlock((void *)v);
+                    if (v->zhongduan == true){
+                        break;
+                    }
+                }
+            }
+        }
+     }
+     cout <<"Get Video End "<<endl;
+     av_frame_free(&videoFrame);
+     avcodec_close(encodeContext);
+    CloseInput();
+    CloseOutput();
+    return 0;
+}
+
+
+//------------------------------------------------------------------------------------------
 //转码
 int toMP4Main(string inputStr,string outpuStr){
     Init();

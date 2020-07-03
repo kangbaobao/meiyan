@@ -8,6 +8,7 @@
 
 import UIKit
 import MetalKit
+
 class MYMetalTriView: MTKView {
     var commandQueue: MTLCommandQueue?
       var rps: MTLRenderPipelineState?
@@ -32,8 +33,17 @@ class MYMetalTriView: MTKView {
             device = MTLCreateSystemDefaultDevice()
         }
           commandQueue = device?.makeCommandQueue()
-          let vertexData = [Vertex(position: [-0.5,-0.5,0.0,1.0], color: [1,0,0,1]),Vertex(position: [0.5,-0.5,0.0,1.0], color: [0,1,0,1]),Vertex(position: [0.0,0.5,0.0,1.0], color: [0,0,1,1])]
-          vertexBuffer = device?.makeBuffer(bytes: vertexData, length: MemoryLayout<Vertex>.size * 3, options: [])
+//          let vertexData = [Vertex(position: [-0.5,-0.5,0.0,1.0], color: [1,0,0,1]),Vertex(position: [0.5,-0.5,0.0,1.0], color: [0,1,0,1]),Vertex(position: [0.0,0.5,0.0,1.0], color: [0,0,1,1])]
+             let vertexData = [
+                Vertex(position: [-0.5,-0.5,0.0,1.0], color: [1,0,0,1]),
+                Vertex(position: [0.5,-0.5,0.0,1.0], color: [0,1,0,1]),
+                Vertex(position: [-0.5,0.5,0.0,1.0], color: [0,0,1,1]),
+                
+                Vertex(position: [0.5,-0.5,0.0,1.0], color: [0,1,0,1]),
+                Vertex(position: [-0.5,0.5,0.0,1.0], color: [0,0,1,1]),
+                Vertex(position: [0.5,0.5,0.0,1.0], color: [0,0,1,1])
+        ]
+        vertexBuffer = device?.makeBuffer(bytes: vertexData, length: MemoryLayout<Vertex>.size * vertexData.count, options: [])
       }
       
       func registerShaders(){
@@ -47,14 +57,16 @@ class MYMetalTriView: MTKView {
           rps = try! device?.makeRenderPipelineState(descriptor: rpld)
       }
       
-      override func draw(_ rect: CGRect) {
+      override func draw() {//_ rect: CGRect
+        super.draw() 
+       // super.draw()  调用 super.draw() 崩溃。。。
           if let drawable = currentDrawable, let rpd = currentRenderPassDescriptor{
               rpd.colorAttachments[0].clearColor = MTLClearColorMake(0.5, 0.5, 0.5, 1.0)
               let commandBuffer = commandQueue!.makeCommandBuffer()
               let commandEncoder = commandBuffer?.makeRenderCommandEncoder(descriptor: rpd)
               commandEncoder?.setRenderPipelineState(rps!)
               commandEncoder?.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
-              commandEncoder?.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3, instanceCount: 1)
+              commandEncoder?.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: 2)
               commandEncoder?.endEncoding()
               commandBuffer?.present(drawable)
               commandBuffer?.commit()

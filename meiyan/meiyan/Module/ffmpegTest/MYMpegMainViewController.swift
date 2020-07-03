@@ -21,7 +21,10 @@ class MYMpegMainViewController: UIViewController {
                 (title:"sws_scale转码RGB，RawDataInput读入",key:"mpegswsScalePicture"),
                 (title:"ffmpeg播放视频（无音频）",key:"mpegOnlyVideo"),
                 (title:"转码（MOV->MP4）",key:"toMp4Video"),
-                //MYMpegToMp4VideoController
+                (title:"ffmpeg调用摄像头（无音频）",key:"mpegOnlyCerma"),
+                (title:"FFmpeg硬件解码(Metal渲染)",key:"MetalTextureVideoHW")
+
+                //MYMpegOnlyCermaController
             ]),
             
         ]
@@ -79,6 +82,11 @@ extension MYMpegMainViewController :UITableViewDelegate,UITableViewDataSource{
         case "toMp4Video":
             readvideoFromLibrary()
             currentKey = "toMp4Video"
+        case "mpegOnlyCerma":
+             mpegOnlyCerma()
+        case "MetalTextureVideoHW":
+            readvideoFromLibrary()
+            currentKey = "MetalTextureVideoHW"
         default:
             print("")
         }
@@ -130,7 +138,12 @@ extension MYMpegMainViewController:UIImagePickerControllerDelegate , UINavigatio
             mpegOnlyVideo(fileUrl: fileUrl)
         }else if currentKey == "toMp4Video"{
             toMp4Video(fileUrl: fileUrl)
+        }else if currentKey == "MetalTextureVideoHW"{
+            hwMetalVideo(fileUrl: fileUrl)
         }
+//        else if currentKey == "mpegOnlyCerma"{
+//        }
+   
     }
     func mpegFirstView(fileUrl:URL){
         let vc =  MYMpegFirstViewController.init()
@@ -349,6 +362,46 @@ extension MYMpegMainViewController:UIImagePickerControllerDelegate , UINavigatio
         }
         """
     }
+    func mpegOnlyCerma(){
+        let vc =  MYMpegOnlyCermaController.init()
+        self.navigationController?.pushViewController(vc, animated: true)
+        vc.message =
+        """
+        mpegUtils.cpp 文件中 yuv转RGB：
+        //打开摄像头
+        static int OpenCermaInput(){
+            avdevice_register_all();
+            inputContext = avformat_alloc_context();
+            lastReadpackTime = av_gettime();
+            inputContext->interrupt_callback.callback = ineterrupt_cb;
+            AVDictionary* options = NULL;
+        //    av_dict_set(&options, "framerate", "30", 0);
+            av_dict_set(&options, "framerate", "60", 0);
+            // 640x480 不支持帧率30
+            av_dict_set(&options, "video_size", "640x480", 0);//"1280x720"
+            //传1 是前置摄像头，默认是0 后置摄像头
+            av_dict_set(&options, "video_device_index", "1", 0);
+            AVInputFormat *iformat = av_find_input_format("avfoundation");
+            //iformat->priv_class
+            int ret = avformat_open_input(&inputContext,"0",iformat,&options);
+            if(ret!=0){ //
+                printf("Couldn't open input stream.\n");
+                char errbuf[1024] = {0};
+                av_strerror(ret, errbuf, 1024);
+                std::cout << "出错原因 ：" <<errbuf<<endl;
+                return -1;
+            }
+             ret = avformat_find_stream_info(inputContext, nullptr);
+            if (ret < 0 ){
+                std::cout << "Find input file stream inform failed\n"<<endl;
+                return ret;
+            }else{
+                std::cout << "打开摄像头成功haha \n"<<endl;
+            }
+            return ret;
+        }
+        """
+    }
     func toMp4Video(fileUrl:URL){
         let vc =  MYMpegToMp4VideoController.init()
         vc.srcPath = fileUrl.absoluteString
@@ -433,8 +486,13 @@ extension MYMpegMainViewController:UIImagePickerControllerDelegate , UINavigatio
             CloseOutput();
             return 0;
         }
-        
-        
         """
     }
+    func hwMetalVideo(fileUrl: URL){
+        let vc = MYMetalTextureVideoController.init()
+        vc.isHW = true
+        vc.srcPath = fileUrl.absoluteString
+        self.navigationController?.pushViewController(vc, animated: true)
+    }
+
 }

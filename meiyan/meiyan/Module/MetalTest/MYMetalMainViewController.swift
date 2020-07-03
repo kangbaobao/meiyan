@@ -14,8 +14,11 @@ class MYMetalMainViewController: UIViewController {
 
             (title:"Metal使用",data:[
                 (title:"创建三角形",key:"metalTri"),
-    //            (title:"调用摄像头",key:"sampleCamera")
+                (title:"添加了模型矩阵三角形",key:"MetalModel"),
+                (title:"渲染纹理",key:"MetalTexture"),
+                (title:"渲染纹理视频（FFmpeg解码）",key:"MetalTextureVideo"),
 
+               //MYMetalTextureVideoController
             ]),
             
         ]
@@ -67,7 +70,17 @@ extension MYMetalMainViewController :UITableViewDelegate,UITableViewDataSource{
                self.navigationController?.pushViewController(vc, animated: true)
                //
                print("")
-            
+        case "MetalModel":
+            let vc = MYMetalModelViewController.init()
+            self.navigationController?.pushViewController(vc, animated: true)
+        case "MetalTexture":
+            let vc = MYMetalTextureController.init()
+            self.navigationController?.pushViewController(vc, animated: true)
+        case "MetalTextureVideo":
+            let vc = MYMetalTextureVideoController.init()
+            self.navigationController?.pushViewController(vc, animated: true)
+
+            //
         default:
             print("")
         }
